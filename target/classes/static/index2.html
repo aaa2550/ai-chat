@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebSocket Voice Chat</title>
+</head>
+<body>
+<h1>WebSocket Voice Chat</h1>
+<button id="startButton">Start Voice Chat</button>
+<button id="stopButton" disabled>Stop Voice Chat</button>
+
+<script>
+  const startButton = document.getElementById('startButton');
+  const stopButton = document.getElementById('stopButton');
+  let websocket;
+  let audioContext;
+  let mediaStream;
+  const bufferSize = 4096; // Adjust buffer size as needed
+
+  startButton.addEventListener('click', async () => {
+    startButton.disabled = true;
+    stopButton.disabled = false;
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const microphone = audioContext.createMediaStreamSource(mediaStream);
+
+      websocket = new WebSocket('ws://localhost:8080/voice-chat');
+      websocket.onopen = (event) => {
+        console.log('WebSocket connection opened');
+        microphone.connect(audioContext.destination); // Play audio locally
+
+        const scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+        microphone.connect(scriptProcessor);
+        scriptProcessor.connect(audioContext.destination);
+
+        scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+          const inputBuffer = audioProcessingEvent.inputBuffer;
+          const audioData = new Float32Array(bufferSize);
+          inputBuffer.getChannelData(0).forEach((sample, index) => {
+            audioData[index] = sample;
+          });
+
+          // Convert Float32Array to ArrayBuffer and send via WebSocket
+          const audioArrayBuffer = audioData.buffer;
+          websocket.send(audioArrayBuffer);
+        };
+      };
+
+      websocket.onclose = (event) => {
+        console.log('WebSocket connection closed');
+        stopButton.disabled = true;
+        startButton.disabled = false;
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(track => track.stop());
+        }
+        if (audioContext) {
+          audioContext.close();
+        }
+      };
+    } catch (error) {
+      console.error('Error accessing microphone:', error);
+      startButton.disabled = false;
+    }
+  });
+
+  stopButton.addEventListener('click', () => {
+    if (websocket) {
+      websocket.close();
+    }
+  });
+</script>
+</body>
+</html>

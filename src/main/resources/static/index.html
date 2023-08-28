@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Streaming Example</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.bootcss.com/sockjs-client/1.3.0/sockjs.js"></script>
+    <script src="https://cdn.bootcss.com/stomp.js/2.3.3/stomp.js"></script>
+    <script>
+        var stompClient = null;
+
+        function connect() {
+            var socket = new SockJS('/ws-endpoint');
+            stompClient = Stomp.over(socket);
+
+            stompClient.connect({}, function (frame) {
+                console.log('Connected: ' + frame);
+                stompClient.subscribe('/user/message/1', function (message) {
+                    $('#stream-messages').append('<div>' + message + '</div>');
+                });
+            });
+        }
+
+        function sendMessage() {
+            var message = $('#message').val();
+            stompClient.send('/app/stream', {}, message);
+        }
+
+    </script>
+</head>
+<body>
+<h1>WebSocket Streaming Example</h1>
+<div id="stream-messages"></div>
+<input type="text" id="message" placeholder="Enter your message">
+<button onclick="sendMessage()">Send</button>
+
+<h1>Microphone Streaming Client</h1>
+<button id="startButton">Start Streaming</button>
+<button id="stopButton">Stop Streaming</button>
+
+<script>
+    connect();
+
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    let stompClient2;
+    let audioContext;
+    let mediaStream;
+    const bufferSize = 4096; // Adjust buffer size as needed
+
+    startButton.addEventListener('click', async () => {
+        startButton.disabled = true;
+        stopButton.disabled = false;
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const microphone = audioContext.createMediaStreamSource(mediaStream);
+
+            const socket = new SockJS('/ws-endpoint');
+            //const socket = new WebSocket('/ws-endpoint');
+            stompClient2 = Stomp.over(socket);
+            stompClient2.connect({}, () => {
+                console.log('WebSocket connection opened');
+
+                const scriptProcessor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+                microphone.connect(scriptProcessor);
+
+                scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+                    const inputBuffer = audioProcessingEvent.inputBuffer;
+                    const audioData = new Float32Array(bufferSize);
+                    inputBuffer.getChannelData(0).forEach((sample, index) => {
+                        audioData[index] = sample;
+                    });
+
+                    // Convert Float32Array to ArrayBuffer and send via Stomp
+                    const audioArrayBuffer = audioData.buffer;
+                    alert("audioArrayBuffer:" + audioArrayBuffer);
+                    stompClient2.send('/app/audio', {}, audioArrayBuffer);
+                };
+            });
+        } catch (error) {
+            console.error('Error accessing microphone:', error);
+            startButton.disabled = false;
+        }
+    });
+
+    stopButton.addEventListener('click', () => {
+        if (stompClient2) {
+            stompClient2.disconnect();
+        }
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+        }
+        if (audioContext) {
+            audioContext.close();
+        }
+        stopButton.disabled = true;
+        startButton.disabled = false;
+    });
+</script>
+</body>
+</html>

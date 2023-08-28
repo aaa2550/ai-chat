@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: ai-chat
+
+server:
+  port: 8080
+
+xfyun:
+  appid: 746cfb92
+  url: rtasr.xfyun.cn/v1/ws
+  app-id: fb3be2ec
+  secret-key: 1ef43404b4b015586e1f6e53ccc55e17
